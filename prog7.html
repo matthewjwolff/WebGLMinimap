@@ -1,0 +1,203 @@
+<html>
+	<head>
+		<title>Project 7</title>
+		<script type="text/javascript" src="webgl-utils.js"></script>
+		<script type="text/javascript" src="webgl-debug.js"></script>
+		<script type="text/javascript" src="cuon-utils.js"></script>
+		<script type="text/javascript" src="cuon-matrix.js"></script>
+		<script type="text/javascript" src="prog7.js"></script>
+		<script type="text/javascript" src="chest.js"></script>
+		<script type="text/javascript" src="square.js"></script>
+		<script type="text/javascript" src="cube.js"></script>
+		<script type="text/javascript" src="teapot.js"></script>
+		</script>
+	</head>
+	<body onload=init()>
+		<h1>Minimap Demo</h1>
+		<h2>Matthew Wolff</h2>
+		<h3>Final Project for CSC 4356 - Interactive Computer Graphics with Dr. Robert Kooima</h3>
+		<script id="markerVertexShader" type="x-shader/x-vertex">
+			precision mediump float;
+
+			attribute vec4 vertexPosition;
+			uniform mat4 modelMatrix;
+
+			void main() {
+				gl_Position = modelMatrix * vertexPosition;
+				//gl_Position = vertexPosition;
+			}
+		</script>
+		<script id="markerFragmentShader" type="x-shader/x-vertex">
+			precision mediump float;
+
+			const vec4 red = vec4(1.0,0.0,0.0,1.0);
+
+			void main() {
+				gl_FragColor = red;
+			}
+		</script>
+		<script id="hudVertexShader" type="x-shader/x-vertex">
+			precision mediump float;
+
+			attribute vec4 vertexPosition;
+			attribute vec2 vertexTexCoord;
+			varying vec2 fragmentTexCoord;
+			varying vec4 vPos;
+
+			void main() {
+				vPos = vertexPosition;
+				fragmentTexCoord = vertexTexCoord;
+				gl_Position = vertexPosition;
+			}
+		</script>
+		<script id="hudFragmentShader" type="x-shader/x-vertex">
+			precision mediump float;
+			uniform sampler2D colorTexture;
+			uniform sampler2D minimapTexture;
+			varying vec2 fragmentTexCoord;
+			varying vec4 vPos;
+
+			void main() {
+				vec4 color = texture2D(colorTexture, fragmentTexCoord);
+				if(vPos.x < 0.01 && vPos.y < 0.01) {
+					vec4 minicolor = texture2D(minimapTexture, fragmentTexCoord);
+					//darken to show that it's a minimap
+					minicolor.a = .5;
+					//scaled combination
+					color.rgb = vec3(color.r*color.a + minicolor.r*minicolor.a,
+					color.g*color.a + minicolor.g*minicolor.a,
+					color.b*color.a + minicolor.b*minicolor.a);
+					color.rgb -= vec3(0.4,0.4,0.4);
+				}
+				gl_FragColor = color;
+			}
+		</script>
+		<script id="appleVertexShader" type="x-shader/x-vertex">
+			precision mediump float;
+
+			uniform mat4 projectionMatrix;
+			uniform mat4 modelMatrix;
+			uniform mat4 viewMatrix;
+
+			attribute vec4 vertexPosition;
+
+			varying vec3 fragmentPosition;
+
+			void main() {
+				fragmentPosition = vec3(vertexPosition);
+				gl_Position = projectionMatrix * viewMatrix * modelMatrix * vertexPosition;
+			}
+		</script>
+		<script id="appleFragmentShader" type="x-shader/x-fragment">
+			precision mediump float;
+			varying vec3 fragmentPosition;
+
+			void main() {
+				if(fragmentPosition.y>0.833)
+					gl_FragColor = vec4(0.38, 0.733, 0.275,1.0);
+				else if(fragmentPosition.y>0.667)
+					gl_FragColor = vec4(0.992, 0.722, 0.153,1.0);
+				else if(fragmentPosition.y>0.5)
+				  gl_FragColor = vec4(0.961, 0.51, 0.122,1.0);
+				else if(fragmentPosition.y>0.333)
+				  gl_FragColor = vec4(0.878, 0.227, 0.243,1.0);
+				else if(fragmentPosition.y>0.167)
+				  gl_FragColor = vec4(0.588, 0.239, 0.592,1.0);
+				else gl_FragColor = vec4(0.0, 0.616, 0.863,1.0);
+			}
+		</script>
+		<script id="lightVertexShader" type="x-shader/x-vertex">
+		precision mediump float;
+
+		uniform mat4 projectionMatrix;
+		uniform mat4 modelMatrix;
+		uniform mat4 viewMatrix;
+		uniform vec4 lightPosition;
+
+		attribute vec4 vertexPosition;
+		attribute vec3 vertexNormal;
+		attribute vec2 vertexTexCoord;
+		attribute vec3 vertexTangent;
+
+		varying vec3 fragmentLight;
+		varying vec3 fragmentView;
+		varying vec2 fragmentTexCoord;
+
+		void main() {
+			mat4 modelViewMatrix = viewMatrix * modelMatrix;
+			vec3 p = vec3(modelViewMatrix * vertexPosition);
+			vec3 l = vec3(viewMatrix * lightPosition);
+
+			vec3 T = mat3(viewMatrix*modelMatrix) * vertexTangent;
+			vec3 N = mat3(viewMatrix*modelMatrix) * vertexNormal;
+			vec3 B = cross(N,T);
+
+			mat3 M = mat3(T, B, N);
+
+			fragmentLight = (l-p) * M;
+			fragmentView = (-p) * M;
+			fragmentTexCoord = vertexTexCoord;
+			gl_Position = projectionMatrix * modelViewMatrix * vertexPosition;
+		}
+		</script>
+		<script id="lightFragmentShader" type="x-shader/x-fragment">
+		precision mediump float;
+
+		const vec3 lightColor = vec3(0.8,0.8,0.8);
+
+		uniform sampler2D diffuseTexture;
+		uniform sampler2D specularTexture;
+		uniform sampler2D normalTexture;
+
+		varying vec3 fragmentLight;
+		varying vec3 fragmentView;
+		varying vec2 fragmentTexCoord;
+
+		void main() {
+			vec3 diffuseColor = texture2D(diffuseTexture, fragmentTexCoord).rgb;
+			vec3 specularColor = texture2D(specularTexture, fragmentTexCoord).rgb;
+			vec3 normalColor = texture2D(normalTexture, fragmentTexCoord).rgb;
+
+			vec3 n = normalize(normalColor*2.0 - 1.0);
+			vec3 l = normalize(fragmentLight);
+			vec3 v = normalize(fragmentView);
+			vec3 h = reflect(-l, n);
+
+			float d = max(dot(l,n),0.0);
+			float s = pow(max(dot(h,n),0.0),50.0);
+
+			vec3 fragmentColor = diffuseColor*lightColor*d + specularColor*lightColor*s;
+			gl_FragColor = vec4(fragmentColor,1.0);
+		}
+		</script>
+		<canvas id="webgl" width="500px" height="500px">This content requires <a href="http://get.webgl.org/">WebGL</a>.</canvas>
+		<h2>Controls</h2>
+		<p><b>W,A,S,D</b> Move forward, left, back, and right in the scene.</p>
+		<h2>Implementation</h2>
+		<h3>Description</h3>
+		<p>The scene features two objects: the teapot from project 4 rendered with
+			its apple shader and the chest from project 6 rendered with a standard
+			light shader. A minimap of the scene is rendered with a red indicator for
+			the camera. The scene can be navigated with the keyboard, and the minimap
+			is updated as the camera moves.</p>
+		<h3>Framebuffer Usage</h3>
+		<p>To make the minimap, two framebuffers were created. The scene is
+			rendered normally to the first framebuffer. The scene is rendered from a
+			top-down, scaled-out perspective in the second minimap by using a
+			different View Matrix. A simple red cube is rendered to the second
+			framebuffer only, representing the location of the camera. When rendering
+			to the screen, both framebuffers's color textures are sampled to create
+			the full HUD. If a fragment is within the minimap area, a weighted sum of
+			the two textures (framebuffers) is calculated and darkened to represent a
+			semitransparent minimap. The method of painting the framebuffers with a
+			screen-filling rectangle is identical to the implementation of project
+			6's postprocess effects, but with a custom shader to handle the minimap.
+		</p>
+		<h3>Movement Implementation</h3>
+		<p>Movement is handled by attaching keypress listeners to the window.
+			Global variables are altered and the scene is re-rendered based on the
+			new values of the global variables. This process is similar to the
+			implementation of scene rotation with the mouse used in other projects.
+		</p>
+	</body>
+</html>
